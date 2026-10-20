@@ -1,0 +1,78 @@
+app-id: org.qbittorrent.qBittorrent
+runtime: org.kde.Platform
+sdk: org.kde.Sdk
+# in order to avoid unexpected incompatibilities, only increase it with major qbt release
+# upstream: https://invent.kde.org/packaging/flatpak-kde-runtime -> org.kde.Sdk.json.in -> "branch"
+runtime-version: "6.11"
+command: qbittorrent
+rename-icon: qbittorrent
+finish-args:
+  - --device=dri
+  - --filesystem=host # https://github.com/flathub/org.qbittorrent.qBittorrent#revise-filesystem-permission
+  - --share=ipc
+  - --share=network
+  - --socket=fallback-x11
+  - --socket=wayland
+  - --system-talk-name=org.freedesktop.login1
+  - --system-talk-name=org.freedesktop.UPower
+  - --talk-name=org.ayatana.indicator.application # for Ubuntu MATE and Trisquel
+  - --talk-name=org.freedesktop.Notifications
+  - --talk-name=org.freedesktop.PowerManagement
+  - --talk-name=org.gnome.SessionManager
+  - --talk-name=org.kde.StatusNotifierWatcher
+cleanup:
+  - /include
+  - /lib/*.a
+  - /lib/*.la
+  - /lib/cmake
+  - /lib/pkgconfig
+  - /share/cmake
+  - /share/man
+
+modules:
+  - name: boost
+    buildsystem: simple
+    build-commands:
+      - ./bootstrap.sh --prefix=/app
+      - ./b2 install --with-headers cxxflags="$CXXFLAGS" linkflags="$LDFLAGS" -j $FLATPAK_BUILDER_N_JOBS
+    sources:
+      - type: archive
+        url: https://archives.boost.io/release/1.86.0/source/boost_1_86_0.tar.gz
+        sha256: 2575e74ffc3ef1cd0babac2c1ee8bdb5782a0ee672b1912da40e5b4b591ca01f
+        #x-checker-data:
+        #  type: html
+        #  url: https://www.boost.org/feed/downloads.rss
+        #  version-pattern: <item><title>Version ([\d\.]+)<\/title>
+        #  url-template: https://archives.boost.io/release/${version}/source/boost_${major}_${minor}_${patch}.tar.gz
+
+  - name: libtorrent
+    buildsystem: cmake-ninja
+    builddir: true
+    config-opts:
+      - -DBUILD_SHARED_LIBS=OFF
+      - -DCMAKE_BUILD_TYPE=RelWithDebInfo
+      - -DCMAKE_CXX_STANDARD=20
+      - -DCMAKE_INTERPROCEDURAL_OPTIMIZATION=ON
+      - -Ddeprecated-functions=OFF
+    sources:
+      - type: git
+        url: https://github.com/arvidn/libtorrent # branch RC_1_2
+        branch: RC_2_1
+
+  - name: qbittorrent
+    buildsystem: cmake-ninja
+    builddir: true
+    # https://github.com/bitcoin-core/gui/issues/867
+    # workaround: when LTO is enabled and linking with Qt, it only allows `PIC`, but GCC was built with
+    # `--enable-default-pie`, which uses `PIE` by default. Therefore, we need to explicitly set `-fPIC` to
+    # ensure the correct mode.
+    build-options:
+      cflags: "-fPIC"
+      cxxflags: "-fPIC"
+    config-opts:
+      - -DCMAKE_BUILD_TYPE=RelWithDebInfo
+      - -DCMAKE_INTERPROCEDURAL_OPTIMIZATION=ON
+      - -DWEBTORRENT=ON
+    sources:
+      - type: git
+        url: https://github.com/qbittorrent/qBittorrent
